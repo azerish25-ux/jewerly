@@ -124,7 +124,7 @@ extension Mesh {
             // Start cap: the first ring, fanned from its centroid, facing the
             // opposite way to the sweep direction.
             let startCentreIndex = UInt32(positions.count)
-            positions.append(centroid(of: Array(positions[0..<profile.count])))
+            positions.append(Self.centroid(of: Array(positions[0..<profile.count])))
             normals.append(.zero)
             for profileIndex in 0..<profile.count {
                 let nextProfile = (profileIndex + 1) % profile.count
@@ -134,7 +134,7 @@ extension Mesh {
             // End cap: the last ring, wound the other way.
             let endBase = (ringCount - 1) * profile.count
             let endCentreIndex = UInt32(positions.count)
-            positions.append(centroid(of: Array(positions[endBase..<(endBase + profile.count)])))
+            positions.append(Self.centroid(of: Array(positions[endBase..<(endBase + profile.count)])))
             normals.append(.zero)
             for profileIndex in 0..<profile.count {
                 let nextProfile = (profileIndex + 1) % profile.count
@@ -154,7 +154,7 @@ extension Mesh {
         return mesh
     }
 
-    private func centroid(of points: [Vector3]) -> Vector3 {
+    private static func centroid(of points: [Vector3]) -> Vector3 {
         guard !points.isEmpty else { return .zero }
         var sum = Vector3.zero
         for point in points { sum = sum + point }
