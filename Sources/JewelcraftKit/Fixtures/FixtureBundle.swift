@@ -128,9 +128,10 @@ public enum FixtureBundle {
         JSONDecoder()
     }
 
-    public static func manifest(from bundle: Bundle = .module) -> FixtureManifest {
+    public static func manifest(from bundle: Bundle? = nil) -> FixtureManifest {
+        let resolved = bundle ?? .module
         guard
-            let url = bundle.url(forResource: "fixtures-manifest", withExtension: "json"),
+            let url = resolved.url(forResource: "fixtures-manifest", withExtension: "json"),
             let data = try? Data(contentsOf: url),
             let manifest = try? decoder().decode(FixtureManifest.self, from: data)
         else {
@@ -141,11 +142,12 @@ public enum FixtureBundle {
 
     /// Loads a fixture: the bundled document when it is present and readable,
     /// the code-built equivalent otherwise.
-    public static func decode<T: CodeFixture>(_ name: String, from bundle: Bundle = .module) throws -> T {
+    public static func decode<T: CodeFixture>(_ name: String, from bundle: Bundle? = nil) throws -> T {
+        let resolved = bundle ?? .module
         guard name == T.fixtureName else {
             throw FixtureError.unavailable("\(name) (asked for \(name); the fixture type is \(T.fixtureName))")
         }
-        if let url = bundle.url(forResource: name, withExtension: "json"),
+        if let url = resolved.url(forResource: name, withExtension: "json"),
            let data = try? Data(contentsOf: url),
            let value = try? decoder().decode(T.self, from: data) {
             record(source: .json, for: name)
@@ -175,8 +177,9 @@ public enum FixtureBundle {
     }
 
     /// The bundled JSON for a fixture, when the document shipped.
-    public static func rawJSON(named name: String, from bundle: Bundle = .module) -> Data? {
-        guard let url = bundle.url(forResource: name, withExtension: "json") else { return nil }
+    public static func rawJSON(named name: String, from bundle: Bundle? = nil) -> Data? {
+        let resolved = bundle ?? .module
+        guard let url = resolved.url(forResource: name, withExtension: "json") else { return nil }
         return try? Data(contentsOf: url)
     }
 

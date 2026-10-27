@@ -110,7 +110,7 @@ public final class CatalogService {
     }
 
     /// Loads the catalogue that ships with the package.
-    public static func loadFromBundle(_ bundle: Bundle = .module) throws -> CatalogService {
+    public static func loadFromBundle(_ bundle: Bundle? = nil) throws -> CatalogService {
         let index: CatalogIndex = try FixtureBundle.decode("catalog", from: bundle)
         return CatalogService(index: index)
     }

@@ -333,7 +333,7 @@ public enum CatalogFixtures {
         )
     }
 
-    public static func design(_ seed: Seed, index: Int) -> DesignDetail {
+    static func design(_ seed: Seed, index: Int) -> DesignDetail {
         let material = centreMaterial(forColourFacet: seed.colour)
         let qualityID = defaultQualityID(for: material)
         let colourID = gemColourID(forFacet: seed.colour)
