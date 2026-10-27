@@ -31,13 +31,15 @@ final class EngineTests: XCTestCase {
 
     func testOpeningASessionBuildsAWatertightRingAndPublishesASnapshot() async throws {
         let engine = try await makeEngine()
-        let snapshot = try await snapshot(engine)
+        // The session's own snapshot, named so it cannot shadow the helper that
+        // fetched it.
+        let state = try await snapshot(engine)
 
-        XCTAssertEqual(snapshot.designID, DesignID("JWL-1001"))
-        XCTAssertGreaterThan(snapshot.triangleCount, 1_000)
-        XCTAssertGreaterThan(snapshot.partCount, 3)
-        XCTAssertGreaterThan(snapshot.metalGrams, 0.5)
-        XCTAssertTrue(snapshot.issues.isEmpty)
+        XCTAssertEqual(state.designID, DesignID("JWL-1001"))
+        XCTAssertGreaterThan(state.triangleCount, 1_000)
+        XCTAssertGreaterThan(state.partCount, 3)
+        XCTAssertGreaterThan(state.metalGrams, 0.5)
+        XCTAssertTrue(state.issues.isEmpty)
 
         let built = try await engine.build()
         XCTAssertTrue(built.isWatertight, built.defects.map(\.description).joined(separator: "; "))
@@ -81,14 +83,17 @@ final class EngineTests: XCTestCase {
 
     func testCentreCaratIsRoundedToAQuarterWhenRoundingIsOn() async throws {
         let engine = try await makeEngine()
-        XCTAssertTrue(try await snapshot(engine).quarterCaratRounding)
+        let startsRounded = try await snapshot(engine).quarterCaratRounding
+        XCTAssertTrue(startsRounded)
 
         try await engine.setCentreGem(carat: 1.13, shape: nil, colourID: nil, qualityID: nil)
-        XCTAssertEqual(try await snapshot(engine).centreCarat ?? 0, 1.25, accuracy: 1e-9)
+        let roundedCarat = try await snapshot(engine).centreCarat ?? 0
+        XCTAssertEqual(roundedCarat, 1.25, accuracy: 1e-9)
 
         _ = try await engine.toggleQuarterCaratRounding()
         try await engine.setCentreGem(carat: 1.13, shape: nil, colourID: nil, qualityID: nil)
-        XCTAssertEqual(try await snapshot(engine).centreCarat ?? 0, 1.13, accuracy: 1e-9)
+        let exactCarat = try await snapshot(engine).centreCarat ?? 0
+        XCTAssertEqual(exactCarat, 1.13, accuracy: 1e-9)
     }
 
     func testACentreWeightOutsideTheDesignsRangeIsRefused() async throws {
@@ -134,13 +139,16 @@ final class EngineTests: XCTestCase {
         let yellow = try XCTUnwrap(StandardMetals.catalog.metal(id: "gold-14k-yellow"))
 
         try await engine.setMetals(metal1: yellow, metal2: nil)
-        XCTAssertEqual(try await snapshot(engine).metal1ID, "gold-14k-yellow")
+        let initialMetal = try await snapshot(engine).metal1ID
+        XCTAssertEqual(initialMetal, "gold-14k-yellow")
 
         try await engine.undo()
-        XCTAssertEqual(try await snapshot(engine).metal1ID, "gold-14k-white")
+        let metalAfterUndo = try await snapshot(engine).metal1ID
+        XCTAssertEqual(metalAfterUndo, "gold-14k-white")
 
         try await engine.redo()
-        XCTAssertEqual(try await snapshot(engine).metal1ID, "gold-14k-yellow")
+        let metalAfterRedo = try await snapshot(engine).metal1ID
+        XCTAssertEqual(metalAfterRedo, "gold-14k-yellow")
     }
 
     func testAClosedSessionRefusesChanges() async throws {
