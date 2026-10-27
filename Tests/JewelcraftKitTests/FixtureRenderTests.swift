@@ -128,8 +128,14 @@ final class FixtureRenderTests: XCTestCase {
         let white = library.material(forGemMaterial: .diamond, colour: .white)
         let blue = library.material(forGemMaterial: .diamond, colour: RGBColour(red: 0.2, green: 0.4, blue: 0.9))
 
-        XCTAssertGreaterThan(blue.baseColour.blue, white.baseColour.blue)
-        XCTAssertLessThan(blue.baseColour.red, white.baseColour.red)
+        // The gem base colour is a cool white, so "bluer than the white stone"
+        // is not the property that matters — the tint has to make the stone
+        // read as blue, and leave a colourless stone neutral.
+        let blueDominance = blue.baseColour.blue - blue.baseColour.red
+        let whiteDominance = white.baseColour.blue - white.baseColour.red
+        XCTAssertGreaterThan(blueDominance, whiteDominance)
+        XCTAssertGreaterThan(blueDominance, 0.15)
+        XCTAssertLessThan(abs(whiteDominance), 0.05)
         XCTAssertNotEqual(white.baseColourHex, blue.baseColourHex)
     }
 
