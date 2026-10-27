@@ -163,4 +163,53 @@ final class OrderTests: XCTestCase {
         XCTAssertNoThrow(try repository.save(order))
         XCTAssertEqual(try repository.all().count, 1)
     }
+
+    func testOnlyAnOrderThatHasNotEnteredTheWorkshopCanBeRemoved() throws {
+        // Deterministic references, so this test can name the documents it made.
+        var issued = 0
+        let service = OrderService(
+            repository: InMemoryOrderRepository(),
+            catalog: catalog,
+            pricing: pricing,
+            references: OrderReferenceGenerator(prefix: "JW", token: {
+                issued += 1
+                return String(format: "%04d", issued)
+            }),
+            clock: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
+
+        let first = try draft(service, designID: "JWL-1005")
+        XCTAssertEqual(first.ref.rawValue, "JW-20270115-0001")
+        XCTAssertEqual(try service.orders().count, 1)
+
+        // A draft is the studio's own work in progress, so it can be thrown away.
+        try service.delete(ref: first.ref)
+        XCTAssertTrue(try service.orders().isEmpty)
+        XCTAssertNil(try service.order(ref: first.ref))
+
+        // Once submitted, the order is the workshop's record of the job.
+        let submitted = try service.submit(try draft(service, designID: "JWL-1005"))
+        XCTAssertThrowsError(try service.delete(ref: submitted.ref)) { error in
+            guard let orderError = error as? OrderError,
+                  case .notDeletable(let status) = orderError else {
+                return XCTFail("expected a not-deletable refusal, got \(error)")
+            }
+            XCTAssertEqual(status, .submitted)
+        }
+        XCTAssertEqual(try service.orders().count, 1)
+
+        // A cancellation is the end of the road, so a cancelled order can go.
+        let cancelled = try service.advance(ref: submitted.ref, to: .cancelled)
+        XCTAssertEqual(cancelled.status, .cancelled)
+        try service.delete(ref: submitted.ref)
+        XCTAssertTrue(try service.orders().isEmpty)
+
+        // Removing something that is not there is reported, not ignored.
+        XCTAssertThrowsError(try service.delete(ref: submitted.ref)) { error in
+            guard let orderError = error as? OrderError,
+                  case .notFound = orderError else {
+                return XCTFail("expected a not-found refusal, got \(error)")
+            }
+        }
+    }
 }

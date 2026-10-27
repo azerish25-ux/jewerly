@@ -9,6 +9,12 @@
 //  one file is deliberate — the original's viewport was a plugin to a separate
 //  CAD process, and the equivalent boundary here is "meshes in, pixels out".
 //
+//  Why `ARView` rather than RealityKit's SwiftUI `RealityView`: `RealityView` is
+//  iOS 18 and newer, and this app runs on iPadOS 17. `ARView` in its documented
+//  `.nonAR` camera mode — "a fully virtual environment with no relationship to
+//  the real world" — is the supported way to render the model with no camera
+//  feed behind it on every version this app claims.
+//
 
 import SwiftUI
 import RealityKit
@@ -29,8 +35,6 @@ struct RingViewport: View {
     @State private var magnification: Double = 1
     @State private var committedMagnification: Double = 1
 
-    private static let rootName = "ring.root"
-
     var body: some View {
         ZStack {
             LinearGradient(
@@ -39,26 +43,14 @@ struct RingViewport: View {
                 endPoint: .bottom
             )
 
-            RealityView { content in
-                let root = Entity()
-                root.name = Self.rootName
-                content.add(root)
-                content.add(RingScene.lighting())
-            } update: { content in
-                guard let root = content.entities.first(where: { $0.name == Self.rootName }) else { return }
-                RingScene.populate(
-                    root,
-                    built: built,
-                    metalHex: metalHex,
-                    highlightedSlot: highlightedSlot
-                )
-                root.transform = Transform(
-                    scale: SIMD3<Float>(repeating: Float(0.0011 * magnification)),
-                    rotation: simd_quatf(angle: Float(yaw * .pi / 180), axis: [0, 1, 0])
-                        * simd_quatf(angle: Float(pitch * .pi / 180), axis: [1, 0, 0]),
-                    translation: [0, 0, -0.085]
-                )
-            }
+            RingSceneView(
+                built: built,
+                metalHex: metalHex,
+                highlightedSlot: highlightedSlot,
+                yaw: yaw,
+                pitch: pitch,
+                magnification: magnification
+            )
             .gesture(
                 DragGesture()
                     .onChanged { value in
@@ -79,6 +71,8 @@ struct RingViewport: View {
                         committedMagnification = magnification
                     }
             )
+            .accessibilityLabel("Ring model")
+            .accessibilityValue(accessibilitySummary)
 
             if built == nil {
                 VStack(spacing: 8) {
@@ -124,6 +118,13 @@ struct RingViewport: View {
         )
     }
 
+    /// What a screen reader is told about the model on the bench.
+    private var accessibilitySummary: String {
+        guard let built else { return "No ring loaded" }
+        let stones = built.gemPlacements.count
+        return "\(Format.grams(built.metalGrams)), \(stones) stone\(stones == 1 ? "" : "s"), \(Format.count(built.triangleCount)) triangles"
+    }
+
     private var hud: some View {
         HStack(spacing: 10) {
             Text(built.map { Format.grams($0.metalGrams) } ?? "—")
@@ -142,9 +143,76 @@ struct RingViewport: View {
     }
 }
 
+// MARK: - The RealityKit view
+
+/// The bridge between SwiftUI and the bench's RealityKit scene.
+///
+/// Geometry is rebuilt only when the ring or its metal actually changes: a drag
+/// publishes a new transform on every frame, and repopulating the scene each
+/// time would throw away the mesh for no reason.
+private struct RingSceneView: UIViewRepresentable {
+
+    let built: BuiltRing?
+    let metalHex: String
+    let highlightedSlot: Int?
+    let yaw: Double
+    let pitch: Double
+    let magnification: Double
+
+    func makeUIView(context: Context) -> ARView {
+        let view = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
+        view.environment.background = .color(UIColor(StudioTheme.ink))
+
+        // The viewport is a viewer, not an AR experience: the gestures in
+        // `RingViewport` drive the model, so the view itself takes no touches.
+        view.isUserInteractionEnabled = false
+
+        let anchor = AnchorEntity(world: .zero)
+        let rig = Entity()
+        rig.name = RingScene.rigName
+        anchor.addChild(rig)
+        anchor.addChild(RingScene.lighting())
+        view.scene.addAnchor(anchor)
+
+        context.coordinator.rig = rig
+        return view
+    }
+
+    func updateUIView(_ view: ARView, context: Context) {
+        guard let rig = context.coordinator.rig else { return }
+
+        let key = RingScene.key(built: built, metalHex: metalHex, highlightedSlot: highlightedSlot)
+        if context.coordinator.key != key {
+            RingScene.populate(rig, built: built, metalHex: metalHex, highlightedSlot: highlightedSlot)
+            context.coordinator.key = key
+        }
+
+        // Millimetres to metres, then the studio framing: the ring sits 8.5 cm
+        // from the virtual camera, which is what the original's default bench
+        // view showed.
+        rig.transform = Transform(
+            scale: SIMD3<Float>(repeating: Float(0.0011 * magnification)),
+            rotation: simd_quatf(angle: Float(yaw * .pi / 180), axis: [0, 1, 0])
+                * simd_quatf(angle: Float(pitch * .pi / 180), axis: [1, 0, 0]),
+            translation: [0, 0, -0.085]
+        )
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        var rig: Entity?
+        var key: String?
+    }
+}
+
 // MARK: - Scene construction
 
 enum RingScene {
+
+    static let rigName = "ring.rig"
 
     /// Three directional lights rather than an image-based environment: no HDR
     /// asset to ship, and a bench lamp is easier to read than a studio HDRI.
@@ -178,36 +246,50 @@ enum RingScene {
         return container
     }
 
+    /// What the scene was built from. A drag publishes a new transform on every
+    /// frame, so this is what decides whether the model has to be rebuilt.
+    static func key(built: BuiltRing?, metalHex: String, highlightedSlot: Int?) -> String {
+        guard let built else { return "empty" }
+        return [
+            built.designID.rawValue,
+            String(built.parts.count),
+            String(built.triangleCount),
+            String(format: "%.4f", built.metalGrams),
+            metalHex,
+            highlightedSlot.map(String.init) ?? "-"
+        ].joined(separator: "|")
+    }
+
     static func populate(
-        _ root: Entity,
+        _ rig: Entity,
         built: BuiltRing?,
         metalHex: String,
         highlightedSlot: Int?
     ) {
-        root.children.removeAll()
+        rig.children.removeAll()
         guard let built else { return }
 
         let centre = built.bounds.center
-        let metal: [any Material] = [material(hex: metalHex, metallic: 0.95, roughness: 0.22)]
+        let metal: [any RealityKit.Material] = [material(hex: metalHex, metallic: 0.95, roughness: 0.22)]
 
         for part in built.parts where part.isVisibleByDefault {
             guard let resource = resource(for: part.mesh, offsetBy: centre) else { continue }
             let entity = ModelEntity(mesh: resource, materials: metal)
             entity.name = "part.\(part.id)"
-            root.addChild(entity)
+            rig.addChild(entity)
         }
 
         for placement in built.gemPlacements {
             guard let resource = resource(for: placement.mesh(), offsetBy: centre) else { continue }
             let isHighlighted = placement.slotIndex == highlightedSlot
-            let stone: [any Material] = [
+            let stone: [any RealityKit.Material] = [
                 isHighlighted
                     ? material(hex: "#F2C14E", metallic: 0.3, roughness: 0.05)
                     : material(hex: gemHex(placement), metallic: 0.05, roughness: 0.03)
             ]
             let entity = ModelEntity(mesh: resource, materials: stone)
             entity.name = "gem.\(placement.slotIndex)"
-            root.addChild(entity)
+            rig.addChild(entity)
         }
     }
 

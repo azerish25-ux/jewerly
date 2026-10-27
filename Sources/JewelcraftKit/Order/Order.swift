@@ -371,6 +371,7 @@ public enum OrderError: Error, Equatable, CustomStringConvertible {
     case incompleteOrder([String])
     case duplicateReference(OrderRef)
     case notFound(OrderRef)
+    case notDeletable(OrderStatus)
     case persistence(String)
 
     public var description: String {
@@ -383,6 +384,8 @@ public enum OrderError: Error, Equatable, CustomStringConvertible {
             return "An order with reference \(ref.rawValue) already exists."
         case .notFound(let ref):
             return "No order with reference \(ref.rawValue) exists."
+        case .notDeletable(let status):
+            return "An order that is \(status.displayName.lowercased()) is kept in the register."
         case .persistence(let message):
             return "Order storage failed: \(message)"
         }
@@ -605,6 +608,21 @@ public final class OrderService {
 
     public func orders() throws -> [Order] {
         try repository.all()
+    }
+
+    /// Removes a stored order.
+    ///
+    /// Only an order that has not entered the workshop can be removed: a
+    /// submitted order is work in progress, and the register is the record of
+    /// it. A cancelled order can be cleared away, because nothing follows it.
+    public func delete(ref: OrderRef) throws {
+        guard let order = try repository.order(ref: ref) else {
+            throw OrderError.notFound(ref)
+        }
+        guard order.status == .draft || order.status == .cancelled else {
+            throw OrderError.notDeletable(order.status)
+        }
+        try repository.delete(ref: ref)
     }
 
     public func order(ref: OrderRef) throws -> Order? {

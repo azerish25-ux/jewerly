@@ -71,25 +71,3 @@ jobs:
             fi
           done
           echo "Documentation and build manifests are present."
-
-  kernel-manifest:
-    name: Package manifest resolves
-    runs-on: macos-15
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Dump the package manifest
-        run: |
-          set -o pipefail
-          swift package dump-package 2>&1 | tee manifest.json | head -n 40
-          python3 - <<'PY'
-          import json
-          with open("manifest.json") as handle:
-              package = json.load(handle)
-          targets = {target["name"] for target in package.get("targets", [])}
-          expected = {"JewelcraftKit", "JewelcraftKitTests"}
-          missing = expected - targets
-          if missing:
-              raise SystemExit(f"manifest is missing targets: {sorted(missing)}")
-          print("manifest targets:", ", ".join(sorted(targets)))
-          PY

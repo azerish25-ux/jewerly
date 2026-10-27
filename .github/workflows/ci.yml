@@ -46,6 +46,25 @@ jobs:
           swift --version
           xcodebuild -version
 
+      # Moved here from the guards workflow: a second macOS job for eight lines
+      # of `dump-package` competes for the same constrained runner capacity as
+      # the two jobs that actually build something.
+      - name: The manifest declares the expected targets
+        run: |
+          swift package dump-package > manifest.json
+          head -n 40 manifest.json
+          python3 - <<'PY'
+          import json
+          with open("manifest.json") as handle:
+              package = json.load(handle)
+          targets = {target["name"] for target in package.get("targets", [])}
+          expected = {"JewelcraftKit", "JewelcraftKitTests"}
+          missing = expected - targets
+          if missing:
+              raise SystemExit("manifest is missing targets: %s" % sorted(missing))
+          print("manifest targets:", ", ".join(sorted(targets)))
+          PY
+
       - name: Cache SwiftPM build
         uses: actions/cache@v4
         with:

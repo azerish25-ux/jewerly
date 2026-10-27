@@ -142,14 +142,19 @@ private struct OrderRow: View {
                     }
                 }
                 Spacer()
-                Button(role: .destructive) {
-                    model.remove(order)
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 11))
+                // Only an order that has not entered the workshop can be removed;
+                // the register is the record of the ones that have.
+                if order.status == .draft || order.status == .cancelled {
+                    Button(role: .destructive) {
+                        model.remove(order)
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(StudioTheme.muted)
+                    .accessibilityLabel("Remove order \(order.ref.rawValue)")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(StudioTheme.muted)
             }
         }
         .padding(.vertical, 6)
