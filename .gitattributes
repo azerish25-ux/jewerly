@@ -1,0 +1,10 @@
+# Normalise line endings in the repository: LF on every platform, so Swift
+# sources, YAML workflows and Markdown all diff cleanly regardless of who
+# checked the tree out.
+* text=auto eol=lf
+
+# Generated or binary artefacts that must never be treated as text.
+*.png binary
+*.jpg binary
+*.xcresult binary
+*.xcuserstate binary

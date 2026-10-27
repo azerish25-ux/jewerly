@@ -1,0 +1,166 @@
+# Continuous integration for the Jewelcraft iPadOS rebuild.
+#
+# Two jobs, because the two halves of the product fail for different reasons:
+#
+#   core  — `swift test` on the platform-agnostic kernel (geometry, catalogue
+#           algebra, pricing arithmetic, order documents). Fast, no simulator,
+#           no signing, no GPU. This is the job that should be green before
+#           anything else is believed.
+#
+#   app   — XcodeGen, a simulator build of the iPadOS app, and the UI test that
+#           walks catalogue → configure → quote → order.
+#
+# Neither job signs anything: the build is for verification, not distribution.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep Xcode's output linear so a failure is readable in the log without a
+  # formatter that might not be installed on the runner.
+  NSUnbufferedIO: YES
+
+jobs:
+  core:
+    name: Kernel (swift test)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Build kernel and tests
+        run: |
+          set -o pipefail
+          swift build --build-tests 2>&1 | tee build.log | tail -n 60
+
+      - name: Test kernel
+        run: |
+          set -o pipefail
+          swift test --parallel 2>&1 | tee test.log | tail -n 120
+
+      - name: Fixture documents are reproducible
+        run: |
+          set -o pipefail
+          swift run generate-fixtures "$RUNNER_TEMP/fixtures" 2>&1 | tee fixtures.log | tail -n 40
+          test -s "$RUNNER_TEMP/fixtures/catalog.json"
+          test -s "$RUNNER_TEMP/fixtures/fixtures-manifest.json"
+
+      - name: Upload kernel logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-logs
+          path: |
+            build.log
+            test.log
+            fixtures.log
+
+  app:
+    name: App (iPadOS simulator)
+    runs-on: macos-15
+    timeout-minutes: 60
+    needs: core
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Generate the Xcode project
+        run: |
+          set -o pipefail
+          xcodegen generate --spec project.yml
+
+      - name: Resolve packages
+        run: |
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies \
+            -project Jewelcraft.xcodeproj \
+            -scheme Jewelcraft 2>&1 | tail -n 40
+
+      - name: Choose an iPad simulator
+        id: simulator
+        run: |
+          python3 - <<'PY' > simulator.txt
+          import json, subprocess, sys
+          raw = subprocess.run(
+              ["xcrun", "simctl", "list", "devices", "available", "--json"],
+              capture_output=True, text=True, check=True
+          ).stdout
+          devices = json.loads(raw).get("devices", {})
+          for runtime in sorted(devices, reverse=True):
+              if "iOS" not in runtime:
+                  continue
+              for device in devices[runtime]:
+                  if device.get("name", "").startswith("iPad"):
+                      print(device["udid"])
+                      sys.exit(0)
+          print("no iPad simulator available", file=sys.stderr)
+          sys.exit(1)
+          PY
+          echo "udid=$(head -n 1 simulator.txt)" >> "$GITHUB_OUTPUT"
+          echo "Using iPad simulator $(head -n 1 simulator.txt)"
+
+      - name: Build for testing
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project Jewelcraft.xcodeproj \
+            -scheme Jewelcraft \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee build-app.log | tail -n 80
+
+      - name: Run UI tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project Jewelcraft.xcodeproj \
+            -scheme Jewelcraft \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath DerivedData \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee test-app.log | tail -n 120
+
+      - name: Upload app logs and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-logs
+          path: |
+            build-app.log
+            test-app.log
+            TestResults.xcresult
+          if-no-files-found: warn

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "JewelcraftKit.FixtureBundle.writeAllFixtures(to:)",
+  "generator": "swift run generate-fixtures",
+  "note": "Every fixture document named here has a code-built equivalent in JewelcraftKit. The JSON is the published form: it can be inspected, diffed and regenerated; the Swift is the checked one, and the tests assert the two agree.",
+  "fixtures": {
+    "catalog": "code",
+    "gem-catalog": "code",
+    "rates": "code",
+    "materials": "code"
+  },
+  "provenance": "Synthetic. No catalogue, price list, artwork or model data from any commercial product is reproduced here; the designs, prices, grades and materials are invented for the rebuild and are labelled as such in docs/FIDELITY.md."
+}

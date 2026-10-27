@@ -1,0 +1,41 @@
+# ---------------------------------------------------------------------------
+# Reverse-engineering reference material: NEVER committed.
+#
+# These paths hold the legally-obtained reference binaries, the extracted
+# installer tree, the decompiled corpus, the RE toolchain and the raw evidence
+# artifacts. They stay on this machine. Only the human-readable reports under
+# docs/reports/ are tracked, and CI (guards.yml) fails the build if any of the
+# originals ever reach a commit.
+# ---------------------------------------------------------------------------
+/Main/
+/build/
+/cache/
+/evidence/
+/reports/
+/tools/
+/.freebuff/
+
+# ---------------------------------------------------------------------------
+# Generated Xcode project (XcodeGen owns project.yml; the project is a build
+# artifact, never hand-edited and never committed)
+# ---------------------------------------------------------------------------
+/Jewelcraft.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# CI artifacts pulled back locally
+/artifacts/
+*.xcresult
+
+# macOS
+.DS_Store
+
+# Fixture documents written by `swift run generate-fixtures` during local checks.
+# The published documents live in Sources/JewelcraftKit/Resources.
+/Fixtures/

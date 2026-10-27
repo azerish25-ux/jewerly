@@ -1,0 +1,95 @@
+# Guard rails.
+#
+# The rebuild was produced by reverse-engineering a legally-obtained installer.
+# That reference material — the original binaries, the extracted tree, the
+# decompiled corpus and the RE toolchain — must never appear in this repository,
+# which is public. `.gitignore` keeps it out locally; this workflow is the check
+# that it stayed out of the index, because a `.gitignore` cannot stop
+# `git add -f`.
+#
+# It also refuses build output and oversized binaries, so the checkout stays a
+# source tree rather than an archive.
+
+name: Guards
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  no-reference-material:
+    name: No reference material in the index
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Forbidden paths
+        run: |
+          set -euo pipefail
+          forbidden="$(git ls-files | grep -Ei '^(Main|build|cache|evidence|tools|reports)/' || true)"
+          if [ -n "$forbidden" ]; then
+            echo "::error::Reference material is tracked in the repository."
+            echo "$forbidden"
+            echo "These paths are listed in .gitignore on purpose: they hold the original binaries,"
+            echo "the extracted installer and the RE toolchain. Remove them from the index."
+            exit 1
+          fi
+          echo "No forbidden paths are tracked."
+
+      - name: Forbidden file types
+        run: |
+          set -euo pipefail
+          binaries="$(git ls-files | grep -Ei '\.(exe|dll|pdb|bin|so|dylib|msi|jar|zip|7z|xz|xcresult)$' || true)"
+          if [ -n "$binaries" ]; then
+            echo "::error::Binary artifacts are tracked; ship source, not objects."
+            echo "$binaries"
+            exit 1
+          fi
+          echo "No binary artifacts are tracked."
+
+      - name: Oversized files
+        run: |
+          set -euo pipefail
+          large="$(git ls-files -z | xargs -0 -r du -b 2>/dev/null | awk '$1 > 5242880 { print $2 " (" $1 " bytes)" }')"
+          if [ -n "$large" ]; then
+            echo "::error::Files over 5 MiB are tracked; this repository holds source only."
+            echo "$large"
+            exit 1
+          fi
+          echo "No oversized files are tracked."
+
+      - name: The rebuild documentation is present
+        run: |
+          set -euo pipefail
+          for path in README.md project.yml Package.swift docs/FIDELITY.md; do
+            if [ ! -s "$path" ]; then
+              echo "::error::$path is missing or empty."
+              exit 1
+            fi
+          done
+          echo "Documentation and build manifests are present."
+
+  kernel-manifest:
+    name: Package manifest resolves
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dump the package manifest
+        run: |
+          set -o pipefail
+          swift package dump-package 2>&1 | tee manifest.json | head -n 40
+          python3 - <<'PY'
+          import json
+          with open("manifest.json") as handle:
+              package = json.load(handle)
+          targets = {target["name"] for target in package.get("targets", [])}
+          expected = {"JewelcraftKit", "JewelcraftKitTests"}
+          missing = expected - targets
+          if missing:
+              raise SystemExit(f"manifest is missing targets: {sorted(missing)}")
+          print("manifest targets:", ", ".join(sorted(targets)))
+          PY
