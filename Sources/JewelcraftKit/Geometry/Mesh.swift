@@ -187,7 +187,12 @@ public struct Mesh: Equatable {
         }
 
         if outOfRange == 0 {
-            let counts = directedEdgeCounts()
+            // The closed-surface test is a property of the *shape*, not of how
+            // the vertex buffer happens to be laid out: a flat-shaded mesh
+            // legitimately splits every vertex, so walking edge adjacency on
+            // the raw indices would report a perfectly closed stone as open.
+            // Welding by position first makes the test describe the surface.
+            let counts = welded().directedEdgeCounts()
             var boundary = 0
             var nonManifold = 0
             for (edge, count) in counts {
