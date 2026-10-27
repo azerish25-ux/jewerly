@@ -210,12 +210,17 @@ private struct RingSceneView: UIViewRepresentable {
 
 // MARK: - Scene construction
 
+/// RealityKit's mesh, material and entity construction is main-actor work, and
+/// `MeshResource.generate(from:)` is declared `@MainActor`, so the builders here
+/// say so explicitly. `key(…)` and `rigName` stay nonisolated: they are plain
+/// values, and the diffing logic should not need an actor to read them.
 enum RingScene {
 
     static let rigName = "ring.rig"
 
     /// Three directional lights rather than an image-based environment: no HDR
     /// asset to ship, and a bench lamp is easier to read than a studio HDRI.
+    @MainActor
     static func lighting() -> Entity {
         let container = Entity()
         container.name = "lighting"
@@ -260,6 +265,7 @@ enum RingScene {
         ].joined(separator: "|")
     }
 
+    @MainActor
     static func populate(
         _ rig: Entity,
         built: BuiltRing?,
@@ -299,6 +305,7 @@ enum RingScene {
         GemFixtures.catalog.colour(id: placement.colourID)?.swatchHex ?? "#E8EEF4"
     }
 
+    @MainActor
     private static func material(hex: String, metallic: Float, roughness: Float) -> PhysicallyBasedMaterial {
         var material = PhysicallyBasedMaterial()
         material.baseColor = .init(tint: UIColor(Color(hex: hex)))
@@ -307,6 +314,7 @@ enum RingScene {
         return material
     }
 
+    @MainActor
     private static func resource(for mesh: Mesh, offsetBy offset: Vector3) -> MeshResource? {
         guard !mesh.isEmpty, mesh.indices.count % 3 == 0 else { return nil }
         let positions = mesh.positions.map { point in
@@ -314,8 +322,9 @@ enum RingScene {
         }
         guard positions.count == mesh.normals.count else { return nil }
 
-        var descriptor = MeshDescriptor()
-        descriptor.name = "jewelcraft.part"
+        // Built the way Apple's own `generate(from:)` example builds one: the
+        // descriptor is named at creation and its buffers are assigned after.
+        var descriptor = MeshDescriptor(name: "jewelcraft.part")
         descriptor.positions = MeshBuffers.Positions(positions)
         descriptor.normals = MeshBuffers.Normals(
             mesh.normals.map { SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z)) }
