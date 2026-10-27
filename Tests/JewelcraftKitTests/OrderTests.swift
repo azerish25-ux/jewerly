@@ -39,7 +39,7 @@ final class OrderTests: XCTestCase {
             repository: repository,
             catalog: catalog,
             pricing: pricing,
-            references: OrderReferenceGenerator(prefix: "JW"),
+            references: OrderReferenceGenerator(prefix: "JW", clock: { Date(timeIntervalSince1970: 1_800_000_000) }),
             clock: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
     }
@@ -171,10 +171,14 @@ final class OrderTests: XCTestCase {
             repository: InMemoryOrderRepository(),
             catalog: catalog,
             pricing: pricing,
-            references: OrderReferenceGenerator(prefix: "JW", token: {
-                issued += 1
-                return String(format: "%04d", issued)
-            }),
+            references: OrderReferenceGenerator(
+                prefix: "JW",
+                clock: { Date(timeIntervalSince1970: 1_800_000_000) },
+                token: {
+                    issued += 1
+                    return String(format: "%04d", issued)
+                }
+            ),
             clock: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
 
@@ -211,5 +215,20 @@ final class OrderTests: XCTestCase {
                 return XCTFail("expected a not-found refusal, got \(error)")
             }
         }
+    }
+
+    func testADefaultedReferenceGeneratorReadsTheServiceClock() throws {
+        // No generator is supplied, so the service's own clock stamps the
+        // reference: the document's timestamps and its reference agree.
+        let service = OrderService(
+            repository: InMemoryOrderRepository(),
+            catalog: catalog,
+            pricing: pricing,
+            clock: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
+        let order = try draft(service)
+
+        XCTAssertEqual(order.createdAt, Date(timeIntervalSince1970: 1_800_000_000))
+        XCTAssertTrue(order.ref.rawValue.hasPrefix("JWL-20270115-"), order.ref.rawValue)
     }
 }
