@@ -293,21 +293,38 @@ public final class EngineEventStream: EngineEventListener, @unchecked Sendable {
     }
 
     /// Collects events until `predicate` is satisfied, or the count limit is
-    /// reached. Intended for tests, where turning a stream into an assertion is
-    /// the whole point.
+    /// reached, or the timeout expires. Intended for tests, where turning a
+    /// stream into an assertion is the whole point.
+    ///
+    /// The timeout has to hold even when fewer events arrive than were asked
+    /// for: checking a clock only *after* an event lands means a quiet session
+    /// waits for ever, which is exactly how a test suite hangs instead of
+    /// failing. The wait therefore races the stream against a timer, and the
+    /// losing side is cancelled.
     public func collect(
         maximum: Int,
         timeoutSeconds: Double = 2,
         until predicate: @escaping (EngineEvent) -> Bool = { _ in false }
     ) async -> [EngineEvent] {
-        var collected: [EngineEvent] = []
-        let deadline = Date().addingTimeInterval(timeoutSeconds)
-        for await event in stream {
-            collected.append(event)
-            if predicate(event) || collected.count >= maximum { break }
-            if Date() > deadline { break }
+        await withTaskGroup(of: [EngineEvent]?.self) { group in
+            group.addTask { [stream] in
+                var collected: [EngineEvent] = []
+                for await event in stream {
+                    collected.append(event)
+                    if predicate(event) || collected.count >= maximum { break }
+                }
+                return collected
+            }
+            group.addTask {
+                try? await Task.sleep(
+                    nanoseconds: UInt64(Swift.max(0, timeoutSeconds) * 1_000_000_000)
+                )
+                return nil
+            }
+            let finished = await group.next() ?? nil
+            group.cancelAll()
+            return finished ?? []
         }
-        return collected
     }
 }
 
