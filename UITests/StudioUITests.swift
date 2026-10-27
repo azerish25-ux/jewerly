@@ -19,6 +19,11 @@ final class StudioUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        // The studio is a three-column bench, so the test asks for the shape it
+        // is built for. In portrait the split view collapses columns and takes
+        // the sidebar's title out of the tree; pinning landscape keeps the
+        // hierarchy the same on every runner.
+        XCUIDevice.shared.orientation = .landscapeLeft
         app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
@@ -30,17 +35,25 @@ final class StudioUITests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "design-"))
     }
 
-    /// Scrolls the bench until `element` is hittable, or gives up after a few
-    /// swipes. Returns whether it became hittable.
+    /// Scrolls until `element` is hittable, or gives up after a few swipes.
+    /// Returns whether it became hittable.
+    ///
+    /// The studio has several scroll views - the sidebar, the catalogue grid and
+    /// the bench - and the element being looked for decides which one has to
+    /// move. Swiping whichever scroll view happens to be first only works by
+    /// luck, so every one of them is offered the swipe, with a hittability check
+    /// after each so the element is never scrolled past.
     @discardableResult
     private func reveal(_ element: XCUIElement, swipes: Int = 6) -> Bool {
         guard element.waitForExistence(timeout: 20) else { return false }
         if element.isHittable { return true }
-        let scroller = app.scrollViews.firstMatch
-        guard scroller.exists else { return element.isHittable }
+        let scrollers = app.scrollViews.allElementsBoundByIndex
+        guard !scrollers.isEmpty else { return element.isHittable }
         for _ in 0..<swipes {
-            if element.isHittable { return true }
-            scroller.swipeUp()
+            for scroller in scrollers where scroller.exists {
+                scroller.swipeUp()
+                if element.isHittable { return true }
+            }
         }
         return element.isHittable
     }
@@ -89,9 +102,14 @@ final class StudioUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Jewelcraft"].waitForExistence(timeout: 30))
 
         XCTAssertTrue(plates().firstMatch.waitForExistence(timeout: 30))
-        let initialCount = plates().count
 
         app.buttons["facet-toggle"].tap()
+
+        // Counted after the facet rail is open, because opening it takes height
+        // from the grid and a lazy grid materialises only what fits. Baseline
+        // and comparison then describe the same layout.
+        let initialCount = plates().count
+        XCTAssertGreaterThan(initialCount, 0, "The catalogue should show designs")
 
         let search = app.textFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 10))
@@ -102,7 +120,7 @@ final class StudioUITests: XCTestCase {
             app.staticTexts["Nothing matches that yet"].waitForExistence(timeout: 15),
             "A keyword with no match should show the empty state"
         )
-        XCTAssertLessThan(plates().count, initialCount, "The result count should drop")
+        XCTAssertEqual(plates().count, 0, "A keyword with no match should leave no plates")
 
         let clear = app.buttons["clear-filters"]
         XCTAssertTrue(clear.waitForExistence(timeout: 10))
