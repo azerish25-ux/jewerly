@@ -97,7 +97,8 @@ final class OrderTests: XCTestCase {
         let service = makeService()
         let order = try draft(service)
         XCTAssertThrowsError(try service.advance(ref: order.ref, to: .shipped)) { error in
-            guard case OrderError.invalidTransition = error as? OrderError else {
+            guard let orderError = error as? OrderError,
+                  case .invalidTransition = orderError else {
                 return XCTFail("expected an invalid transition, got \(error)")
             }
         }
@@ -116,7 +117,8 @@ final class OrderTests: XCTestCase {
         XCTAssertFalse(order.canSubmit)
         XCTAssertFalse(order.submissionIssues.isEmpty)
         XCTAssertThrowsError(try service.submit(order)) { error in
-            guard case OrderError.incompleteOrder = error as? OrderError else {
+            guard let orderError = error as? OrderError,
+                  case .incompleteOrder = orderError else {
                 return XCTFail("expected an incomplete order, got \(error)")
             }
         }

@@ -127,7 +127,8 @@ final class PricingTests: XCTestCase {
         )
         let engine = PricingEngine(rateTable: empty)
         XCTAssertThrowsError(try engine.quote(configuration: configuration, design: design, built: built)) { error in
-            guard case PricingError.missingMetalRate = error as? PricingError else {
+            guard let pricingError = error as? PricingError,
+                  case .missingMetalRate = pricingError else {
                 return XCTFail("expected a missing metal rate, got \(error)")
             }
         }

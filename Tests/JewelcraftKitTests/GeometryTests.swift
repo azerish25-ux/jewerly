@@ -196,8 +196,8 @@ final class GeometryTests: XCTestCase {
         let a = BoundingBox(minimum: Vector3(0, 0, 0), maximum: Vector3(1, 1, 1))
         let b = BoundingBox(minimum: Vector3(-1, 2, 0), maximum: Vector3(0, 3, 1))
         let union = a.union(b)
-        XCTAssertEqual(union?.minimum, Vector3(-1, 0, 0))
-        XCTAssertEqual(union?.maximum, Vector3(1, 3, 1))
-        XCTAssertEqual(union?.size, Vector3(2, 3, 1))
+        XCTAssertEqual(union.minimum, Vector3(-1, 0, 0))
+        XCTAssertEqual(union.maximum, Vector3(1, 3, 1))
+        XCTAssertEqual(union.size, Vector3(2, 3, 1))
     }
 }
