@@ -100,19 +100,26 @@ public enum SHA256 {
         public mutating func finalize() -> [UInt8] {
             let bitCount = totalByteCount &* 8
 
-            // Padding: a single 1 bit, then zeros, then the 64-bit length.
-            var padding: [UInt8] = [0x80]
-            let remainder = (buffer.count + 1) % 64
-            let zeroCount = remainder <= 56 ? 56 - remainder : 120 - remainder
-            padding.append(contentsOf: [UInt8](repeating: 0, count: zeroCount))
-            for shift in stride(from: 56, through: 0, by: -8) {
-                padding.append(UInt8((bitCount >> UInt64(shift)) & 0xFF))
+            // Padding: a single 1 bit, then zeros up to the 56th byte of the
+            // final block, then the 64-bit length. The buffered tail is the
+            // beginning of that block, so the padding is counted from the tail:
+            // padding the tail on its own leaves a buffer that is not a whole
+            // number of blocks, and the block slices below then trap.
+            var tail = buffer
+            buffer.removeAll(keepingCapacity: false)
+
+            tail.append(0x80)
+            while tail.count % 64 != 56 {
+                tail.append(0x00)
             }
-            // Padding is length data, not message data: compress it directly so
-            // the recorded byte count stays the message's own.
+            for shift in stride(from: 56, through: 0, by: -8) {
+                tail.append(UInt8((bitCount >> UInt64(shift)) & 0xFF))
+            }
+            // Compressed here rather than through `update`, so the recorded byte
+            // count stays the message's own.
             var offset = 0
-            while offset < padding.count {
-                compress(block: Array(padding[offset..<(offset + 64)]))
+            while offset < tail.count {
+                compress(block: Array(tail[offset..<(offset + 64)]))
                 offset += 64
             }
 
