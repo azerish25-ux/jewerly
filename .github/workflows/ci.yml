@@ -11,6 +11,10 @@
 #           walks catalogue → configure → quote → order.
 #
 # Neither job signs anything: the build is for verification, not distribution.
+#
+# Failures are echoed as check-run annotations. The raw job log needs an
+# authenticated session, while annotations are readable by anyone who can see
+# the repository, so a red build explains itself without a login.
 
 name: CI
 
@@ -55,12 +59,12 @@ jobs:
       - name: Build kernel and tests
         run: |
           set -o pipefail
-          swift build --build-tests 2>&1 | tee build.log | tail -n 60
+          swift build --build-tests 2>&1 | tee build.log | tail -n 80
 
       - name: Test kernel
         run: |
           set -o pipefail
-          swift test --parallel 2>&1 | tee test.log | tail -n 120
+          swift test --parallel 2>&1 | tee test.log | tail -n 140
 
       - name: Fixture documents are reproducible
         run: |
@@ -68,6 +72,16 @@ jobs:
           swift run generate-fixtures "$RUNNER_TEMP/fixtures" 2>&1 | tee fixtures.log | tail -n 40
           test -s "$RUNNER_TEMP/fixtures/catalog.json"
           test -s "$RUNNER_TEMP/fixtures/fixtures-manifest.json"
+
+      - name: Annotate kernel failures
+        if: failure()
+        run: |
+          for file in build.log test.log fixtures.log; do
+            [ -f "$file" ] || continue
+            grep -E "error:|fatal error:|failed" "$file" | head -n 40 | while IFS= read -r line; do
+              echo "::error file=${file}::${line//%/%%}"
+            done
+          done
 
       - name: Upload kernel logs
         if: always()
@@ -139,7 +153,7 @@ jobs:
             -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            2>&1 | tee build-app.log | tail -n 80
+            2>&1 | tee build-app.log | tail -n 120
 
       - name: Run UI tests
         run: |
@@ -152,7 +166,17 @@ jobs:
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            2>&1 | tee test-app.log | tail -n 120
+            2>&1 | tee test-app.log | tail -n 160
+
+      - name: Annotate app failures
+        if: failure()
+        run: |
+          for file in build-app.log test-app.log; do
+            [ -f "$file" ] || continue
+            grep -E "error:|fatal error:|BUILD FAILED|Testing failed|failed" "$file" | head -n 40 | while IFS= read -r line; do
+              echo "::error file=${file}::${line//%/%%}"
+            done
+          done
 
       - name: Upload app logs and results
         if: always()
