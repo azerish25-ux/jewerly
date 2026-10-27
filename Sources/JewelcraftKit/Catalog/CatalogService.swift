@@ -155,8 +155,11 @@ public final class CatalogService {
         if let exact = designsBySpin[SpinNumber(normalised)] {
             return exact
         }
+        // A customer reading the number off a tag may quote either the SPIN
+        // number or the design's own catalogue id, so both are accepted.
         return index.designs.first {
             Self.normaliseCatalogueNumber($0.summary.spinNumber.rawValue) == normalised
+                || Self.normaliseCatalogueNumber($0.summary.id.rawValue) == normalised
         }
     }
 

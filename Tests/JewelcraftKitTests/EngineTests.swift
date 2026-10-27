@@ -42,7 +42,10 @@ final class EngineTests: XCTestCase {
         XCTAssertTrue(state.issues.isEmpty)
 
         let built = try await engine.build()
-        XCTAssertTrue(built.isWatertight, built.defects.map(\.description).joined(separator: "; "))
+        let openParts = built.parts
+            .filter { !$0.mesh.isWatertight }
+            .map { "\($0.name) [\($0.kind.rawValue)]: \($0.mesh.defectsDescription)" }
+        XCTAssertTrue(openParts.isEmpty, "parts that are not closed: " + openParts.joined(separator: " | "))
         XCTAssertTrue(built.parts.contains { $0.kind == .shank })
         XCTAssertTrue(built.parts.contains { $0.kind == .centreStone })
         XCTAssertEqual(built.gemPlacements.filter { $0.role == .centre }.count, 1)

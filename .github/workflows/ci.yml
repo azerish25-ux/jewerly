@@ -78,7 +78,7 @@ jobs:
         run: |
           for file in build.log test.log fixtures.log; do
             [ -f "$file" ] || continue
-            grep -E "error:|fatal error:|failed" "$file" | head -n 40 | while IFS= read -r line; do
+            grep -E "error:|fatal error:|failed" "$file" | head -n 200 | while IFS= read -r line; do
               echo "::error file=${file}::${line//%/%%}"
             done
           done
@@ -173,7 +173,7 @@ jobs:
         run: |
           for file in build-app.log test-app.log; do
             [ -f "$file" ] || continue
-            grep -E "error:|fatal error:|BUILD FAILED|Testing failed|failed" "$file" | head -n 40 | while IFS= read -r line; do
+            grep -E "error:|fatal error:|BUILD FAILED|Testing failed|failed" "$file" | head -n 200 | while IFS= read -r line; do
               echo "::error file=${file}::${line//%/%%}"
             done
           done
