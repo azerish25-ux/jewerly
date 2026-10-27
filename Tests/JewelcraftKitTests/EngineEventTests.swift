@@ -100,7 +100,8 @@ final class EngineEventTests: XCTestCase {
     func testLoadingAnotherDesignRebuildsEverything() async throws {
         let engine = try await makeEngine()
         _ = try await engine.loadDesign(DesignID("JWL-1014"))
-        let snapshot = try XCTUnwrap(await engine.snapshot())
+        let publishedSnapshot = await engine.snapshot()
+        let snapshot = try XCTUnwrap(publishedSnapshot)
 
         XCTAssertEqual(snapshot.designID, DesignID("JWL-1014"))
         XCTAssertEqual(snapshot.accentPatternKind, .channel)

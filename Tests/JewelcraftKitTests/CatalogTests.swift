@@ -29,7 +29,7 @@ final class CatalogTests: XCTestCase {
 
     func testEveryDesignIsInternallyConsistent() {
         for design in catalog.allDesigns {
-            XCTAssertEqual(design.integrityIssues(), [], design.id.rawValue)
+            XCTAssertEqual(design.integrityIssues, [], design.id.rawValue)
             XCTAssertGreaterThanOrEqual(design.gemSlots.count, 1)
             XCTAssertTrue(design.summary.centreGemCaratRange.contains(design.suggestedCentreCarat))
             XCTAssertTrue(design.summary.supportedCentreShapes.contains(design.centreSlot?.defaultShape ?? .roundBrilliant))
