@@ -36,6 +36,7 @@ final class EngineEventTests: XCTestCase {
 
         let events = await stream.collect(maximum: 6, timeoutSeconds: 1)
 
+        XCTAssertFalse(events.isEmpty, "opening a session published no events at all")
         XCTAssertTrue(events.contains { if case .sessionOpened = $0 { return true }; return false })
         XCTAssertTrue(events.contains { if case .designLoaded = $0 { return true }; return false })
         XCTAssertTrue(events.contains { if case .configurationChanged = $0 { return true }; return false })

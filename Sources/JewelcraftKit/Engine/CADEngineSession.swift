@@ -292,39 +292,76 @@ public final class EngineEventStream: EngineEventListener, @unchecked Sendable {
         continuation?.finish()
     }
 
-    /// Collects events until `predicate` is satisfied, or the count limit is
+    /// Collects events until `predicate` is satisfied, the count limit is
     /// reached, or the timeout expires. Intended for tests, where turning a
     /// stream into an assertion is the whole point.
     ///
-    /// The timeout has to hold even when fewer events arrive than were asked
-    /// for: checking a clock only *after* an event lands means a quiet session
-    /// waits for ever, which is exactly how a test suite hangs instead of
-    /// failing. The wait therefore races the stream against a timer, and the
-    /// losing side is cancelled.
+    /// Two properties matter here, and both were learned the hard way:
+    ///
+    ///   - The timeout must hold even when fewer events arrive than were asked
+    ///     for. Checking a clock only *after* an event lands leaves a quiet
+    ///     session waiting for ever, which is how a suite hangs instead of
+    ///     failing.
+    ///   - A timeout must still return what *did* arrive. A test asserting
+    ///     "these five were published" asks for a sixth that may never come;
+    ///     throwing the first five away reports the wrong thing entirely.
     public func collect(
         maximum: Int,
         timeoutSeconds: Double = 2,
         until predicate: @escaping (EngineEvent) -> Bool = { _ in false }
     ) async -> [EngineEvent] {
-        await withTaskGroup(of: [EngineEvent]?.self) { group in
+        let box = EngineEventBox()
+        await withTaskGroup(of: Void.self) { group in
             group.addTask { [stream] in
-                var collected: [EngineEvent] = []
                 for await event in stream {
-                    collected.append(event)
-                    if predicate(event) || collected.count >= maximum { break }
+                    if box.record(event, maximum: maximum, until: predicate) { break }
                 }
-                return collected
             }
             group.addTask {
                 try? await Task.sleep(
                     nanoseconds: UInt64(Swift.max(0, timeoutSeconds) * 1_000_000_000)
                 )
-                return nil
             }
-            let finished = await group.next() ?? nil
+            // Whichever finishes first ends the wait; the other is cancelled.
+            await group.next()
             group.cancelAll()
-            return finished ?? []
         }
+        return box.events
+    }
+}
+
+/// The accumulator `collect` fills from one task while a timer runs in another.
+///
+/// A locked box rather than a task-group return value, because the result has to
+/// survive the timeout path: the events that arrived are still the answer when
+/// the ones that did not never come.
+final class EngineEventBox: @unchecked Sendable {
+
+    private let lock = NSLock()
+    private var storage: [EngineEvent] = []
+    private var isComplete = false
+
+    var events: [EngineEvent] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    /// Records an event and reports whether collection is finished.
+    func record(
+        _ event: EngineEvent,
+        maximum: Int,
+        until predicate: (EngineEvent) -> Bool
+    ) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isComplete else { return true }
+        storage.append(event)
+        if predicate(event) || storage.count >= maximum {
+            isComplete = true
+            return true
+        }
+        return false
     }
 }
 
