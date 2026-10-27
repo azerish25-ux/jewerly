@@ -36,7 +36,9 @@ public enum SHA256 {
 
     /// Lower-case hexadecimal digest, the form used in manifests and evidence.
     public static func hexDigest(_ data: Data) -> String {
-        hexDigest(digest(data))
+        // `hexString`, not `hexDigest`: the `[UInt8]` overload takes the
+        // message bytes, so handing it a digest would hash the digest again.
+        hexString(digest(data))
     }
 
     /// Lower-case hexadecimal digest, the form used in manifests and evidence.

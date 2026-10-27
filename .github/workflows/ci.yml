@@ -76,12 +76,62 @@ jobs:
       - name: Annotate kernel failures
         if: failure()
         run: |
-          for file in build.log test.log fixtures.log; do
-            [ -f "$file" ] || continue
-            grep -E "^Test Case |error:|Fatal error|fatal error|signal|Assertion|Precondition" "$file" | head -n 200 | while IFS= read -r line; do
-              echo "::error file=${file}::${line//%/%%}"
-            done
-          done
+          # GitHub caps a step at ten error annotations, so the ten that are
+          # spent here have to be worth more than the first ten log lines: one
+          # per distinct failing test, compiler error or crash.
+          python3 - <<'PY'
+          import os, re, pathlib
+
+          LOCATED = re.compile(
+              r"^(?P<path>.+?):(?P<line>\d+):(?:(?P<column>\d+):)?\s*"
+              r"(?P<severity>error|fatal error):\s*(?P<message>.*)$"
+          )
+          MARKERS = (
+              "Fatal error:",
+              "BUILD FAILED",
+              "Testing failed",
+              "Exited with unexpected signal",
+          )
+          workspace = os.environ.get("GITHUB_WORKSPACE", "")
+          entries, seen = [], set()
+
+          for name in ("build.log", "test.log", "fixtures.log"):
+              source = pathlib.Path(name)
+              if not source.exists():
+                  continue
+              for raw in source.read_text(errors="replace").splitlines():
+                  line = raw.strip()
+                  match = LOCATED.match(line)
+                  if match:
+                      path = match.group("path")
+                      if workspace and path.startswith(workspace + "/"):
+                          path = path[len(workspace) + 1:]
+                      message = match.group("message")
+                      named = re.search(r"-\[[\w.]+ (\w+)\]", message)
+                      key = (path, named.group(1) if named else message[:120])
+                      if key in seen:
+                          continue
+                      seen.add(key)
+                      entries.append((path, match.group("line"), message))
+                      continue
+                  for marker in MARKERS:
+                      if marker in line:
+                          key = (name, line)
+                          if key not in seen:
+                              seen.add(key)
+                              entries.append(("", "", line))
+                          break
+
+          for path, line, message in entries[:10]:
+              location = ""
+              if path:
+                  location = " file=%s" % path
+              if line:
+                  location += ",line=%s" % line
+              escaped = message.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print("::error%s::%s" % (location, escaped))
+          print("::notice::%d distinct failure(s) matched" % len(entries))
+          PY
 
       - name: Upload kernel logs
         if: always()
@@ -171,12 +221,53 @@ jobs:
       - name: Annotate app failures
         if: failure()
         run: |
-          for file in build-app.log test-app.log; do
-            [ -f "$file" ] || continue
-            grep -E "error:|fatal error:|BUILD FAILED|Testing failed|failed" "$file" | head -n 200 | while IFS= read -r line; do
-              echo "::error file=${file}::${line//%/%%}"
-            done
-          done
+          python3 - <<'PY'
+          import os, re, pathlib
+
+          LOCATED = re.compile(
+              r"^(?P<path>.+?):(?P<line>\d+):(?:(?P<column>\d+):)?\s*"
+              r"(?P<severity>error|fatal error):\s*(?P<message>.*)$"
+          )
+          MARKERS = ("BUILD FAILED", "Testing failed", "TEST FAILED", "Fatal error:")
+          workspace = os.environ.get("GITHUB_WORKSPACE", "")
+          entries, seen = [], set()
+
+          for name in ("build-app.log", "test-app.log"):
+              source = pathlib.Path(name)
+              if not source.exists():
+                  continue
+              for raw in source.read_text(errors="replace").splitlines():
+                  line = raw.strip()
+                  match = LOCATED.match(line)
+                  if match:
+                      path = match.group("path")
+                      if workspace and path.startswith(workspace + "/"):
+                          path = path[len(workspace) + 1:]
+                      message = match.group("message")
+                      key = (path, match.group("line"), message[:160])
+                      if key in seen:
+                          continue
+                      seen.add(key)
+                      entries.append((path, match.group("line"), message))
+                      continue
+                  for marker in MARKERS:
+                      if marker in line:
+                          key = (name, line)
+                          if key not in seen:
+                              seen.add(key)
+                              entries.append(("", "", line))
+                          break
+
+          for path, line, message in entries[:10]:
+              location = ""
+              if path:
+                  location = " file=%s" % path
+              if line:
+                  location += ",line=%s" % line
+              escaped = message.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print("::error%s::%s" % (location, escaped))
+          print("::notice::%d distinct failure(s) matched" % len(entries))
+          PY
 
       - name: Upload app logs and results
         if: always()
