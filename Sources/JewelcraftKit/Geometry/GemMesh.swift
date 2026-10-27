@@ -123,8 +123,11 @@ public struct GirdleOutline: Equatable, Sendable {
             let c = cos(theta)
             let s = sin(theta)
             if pointedTips >= 2 {
-                // Two tips, at theta = 0 and theta = pi.
-                return Vector2(c, depthRatio * s * pow(abs(c), pointedPower))
+                // Two tips, at theta = 0 and theta = pi. The pinch is on the
+                // short axis: pinching by |cos| instead would run both lobes
+                // through the origin, which turns the marquise into a figure
+                // of eight whose coincident vertices are degenerate facets.
+                return Vector2(c, depthRatio * s * pow(abs(s), pointedPower))
             }
             // One tip at theta = pi, a rounded end at theta = 0.
             let t = (1 - c) / 2

@@ -35,8 +35,14 @@ final class GemGeometryTests: XCTestCase {
             XCTAssertLessThan(layout.crownHeightRatio, 0.6)
             XCTAssertGreaterThan(layout.pavilionDepthRatio, 0.2)
             XCTAssertLessThan(layout.pavilionDepthRatio, 1.2)
-            XCTAssertGreaterThan(layout.tableRatio, 0.3)
-            XCTAssertLessThan(layout.tableRatio, 0.95)
+            // The table range applies to the faceted cuts. A cabochon has no
+            // table facet at all: its crown is a dome.
+            if shape == .roundCabochon {
+                XCTAssertEqual(layout.tableRatio, 0, "\(shape.rawValue) is a cabochon and has no table")
+            } else {
+                XCTAssertGreaterThan(layout.tableRatio, 0.3, "\(shape.rawValue)")
+                XCTAssertLessThan(layout.tableRatio, 0.95, "\(shape.rawValue)")
+            }
             XCTAssertGreaterThan(layout.massSizeCalibration, 0)
 
             // Every ring of facets must be inside the girdle and ordered from
