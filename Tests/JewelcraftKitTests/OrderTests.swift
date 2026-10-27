@@ -26,7 +26,8 @@ final class OrderTests: XCTestCase {
             designID: design.id,
             parameters: InProcessCADEngine.parameters(for: design, configuration: configuration),
             plan: InProcessCADEngine.gemPlan(for: design, configuration: configuration),
-            metal: configuration.metal1
+            metal: configuration.metal1,
+            metal2: configuration.metal2
         )
         return (design, configuration, built)
     }

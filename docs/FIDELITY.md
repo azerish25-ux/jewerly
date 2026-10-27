@@ -147,6 +147,19 @@ seen running. The app target has not been compiled by the author of this commit:
 the development host has no Swift toolchain, so compilation is CI's job. A
 failure in `.github/workflows/ci.yml` is a real defect to fix, not a formality.
 
+### Defects CI found, and what each one was
+
+The kernel job is the first place this code is compiled, so this is where the
+mistakes surfaced. Each one is fixed and covered by a test, not papered over:
+
+| Defect | What was actually wrong |
+|---|---|
+| SHA-256 `finalize()` | The padding was built from the buffered tail alone, so the buffer it compressed was a whole block only when the tail was empty: **63 of the 64 possible tail lengths sliced past the end of the array and trapped**, which is what killed two test workers. The padding is now counted from the tail, so the tail plus a 1 bit, zeros and the 64-bit length is always whole blocks. `SHA256Tests` pins it to published vectors and to digests from an independent implementation at every boundary length. |
+| Two-tone metal split | Pricing split the head into the second metal while the geometry builder ignored `metal2` and weighed the whole ring in the first metal, so the model and its own quote disagreed about how much platinum was in the ring. The rule now lives once, on `PartKind.headPartKinds`: the builder stamps every metal part with its metal and weighs it in that metal, and pricing reads `built.metalBreakdown` instead of re-deriving the split. Asserted from both sides — the engine test and the pricing test. |
+| `Bundle.module` in public default arguments | A public API defaulted a `Bundle` argument to the internal `Bundle.module`, which does not compile outside the module. Callers pass a bundle or take the default from inside. |
+| Static/instance mix-up in the geometry builder | A builder helper was called as an instance method where it was declared `static`. |
+| Test event collector | `collect` checked its deadline only after an event arrived, so a test waiting for more events than the engine emits blocked until CI timed out, and the timeout discarded the events already gathered. It now races the stream against its own deadline and keeps partial results. |
+
 ## 9. Legal boundary
 
 No CounterSketch, Stuller or GemVision asset, catalogue record, image, material

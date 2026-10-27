@@ -336,6 +336,13 @@ struct ConfiguratorPane: View {
                 MetricRow(label: "Head", value: snapshot?.headStyle.displayName ?? design.head.style.displayName)
                 MetricRow(label: "Metal", value: String(format: "%.2f cm³", snapshot?.metalVolumeCubicMillimetres ?? 0))
                 MetricRow(label: "Cast weight", value: Format.grams(snapshot?.metalGrams ?? 0), emphasised: true)
+                // A two-tone ring is two metals, and the quote prices them apart:
+                // showing one total would hide which metal the weight is in.
+                if let breakdown = snapshot?.metalBreakdown, breakdown.count > 1 {
+                    ForEach(breakdown, id: \.metal.id) { entry in
+                        MetricRow(label: entry.metal.displayName, value: entry.gramsText, indented: true)
+                    }
+                }
                 MetricRow(label: "Parts", value: Format.count(snapshot?.partCount ?? 0))
                 MetricRow(label: "Triangles", value: Format.count(snapshot?.triangleCount ?? 0))
                 MetricRow(label: "Watertight", value: (model.built?.isWatertight ?? false) ? "yes" : "check")

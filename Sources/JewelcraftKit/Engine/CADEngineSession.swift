@@ -160,6 +160,9 @@ public struct ConfigurationSnapshot: Equatable, Sendable {
     public var partCount: Int
     public var triangleCount: Int
     public var metalGrams: Double
+    /// The same weight by metal: one entry for a single-metal ring, two for a
+    /// two-tone one.
+    public var metalBreakdown: [MetalWeight]
     public var metalVolumeCubicMillimetres: Double
     public var issues: [String]
 
@@ -183,6 +186,7 @@ public struct ConfigurationSnapshot: Equatable, Sendable {
         partCount: Int,
         triangleCount: Int,
         metalGrams: Double,
+        metalBreakdown: [MetalWeight] = [],
         metalVolumeCubicMillimetres: Double,
         issues: [String]
     ) {
@@ -205,6 +209,7 @@ public struct ConfigurationSnapshot: Equatable, Sendable {
         self.partCount = partCount
         self.triangleCount = triangleCount
         self.metalGrams = metalGrams
+        self.metalBreakdown = metalBreakdown
         self.metalVolumeCubicMillimetres = metalVolumeCubicMillimetres
         self.issues = issues
     }

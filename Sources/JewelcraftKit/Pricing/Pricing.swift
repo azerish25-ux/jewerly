@@ -382,12 +382,6 @@ public final class PricingEngine {
         self.sizer = sizer
     }
 
-    /// Parts that a two-tone ring makes in its second metal: everything in the
-    /// head. Expressed as a set of part kinds rather than a percentage split, so
-    /// the second metal's weight is a measured volume rather than an arbitrary
-    /// share of the total.
-    private static let headPartKinds: Set<PartKind> = [.prong, .basket, .bezel, .haloRail]
-
     /// A quote for a configured ring.
     ///
     /// Takes the built model rather than a weight, so metal cost follows the
@@ -407,22 +401,13 @@ public final class PricingEngine {
 
         // MARK: Metal
 
-        let headVolume = built.parts
-            .filter { Self.headPartKinds.contains($0.kind) }
-            .reduce(0.0) { $0 + abs($1.mesh.signedVolume) }
-        let bodyVolume = built.parts
-            .filter { $0.kind.isMetal && !Self.headPartKinds.contains($0.kind) }
-            .reduce(0.0) { $0 + abs($1.mesh.signedVolume) }
-
-        let metalVolumeShares: [(Metal, Double)]
-        if let metal2 = configuration.metal2 {
-            metalVolumeShares = [(configuration.metal1, bodyVolume), (metal2, headVolume)]
-        } else {
-            metalVolumeShares = [(configuration.metal1, bodyVolume + headVolume)]
-        }
-
-        for (metal, volume) in metalVolumeShares {
-            let grams = metal.grams(forCubicMillimetres: volume)
+        // The split comes from the built model, which assigns every metal part
+        // its metal (`PartKind.headPartKinds` is the rule) and weighs it in that
+        // metal. Pricing does not re-derive it: one rule in one place, so a quote
+        // and the model cannot disagree about how much of the ring is which metal.
+        for entry in built.metalBreakdown {
+            let metal = entry.metal
+            let grams = entry.grams
             guard grams > 0 else { continue }
             gramsBreakdown[metal.id] = grams
             guard let rate = rateTable.metalRate(rateKey: metal.rateKey) else {
@@ -624,6 +609,7 @@ public final class PricingEngine {
             parameters: parameters,
             plan: plan,
             metal: configuration.metal1,
+            metal2: configuration.metal2,
             sizer: sizer
         )
         return try quote(

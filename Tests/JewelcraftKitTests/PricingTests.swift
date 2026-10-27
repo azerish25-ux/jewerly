@@ -25,7 +25,8 @@ final class PricingTests: XCTestCase {
             designID: design.id,
             parameters: InProcessCADEngine.parameters(for: design, configuration: configuration),
             plan: InProcessCADEngine.gemPlan(for: design, configuration: configuration),
-            metal: configuration.metal1
+            metal: configuration.metal1,
+            metal2: configuration.metal2
         )
         return (design, configuration, built)
     }
@@ -40,7 +41,8 @@ final class PricingTests: XCTestCase {
             designID: design.id,
             parameters: InProcessCADEngine.parameters(for: design, configuration: configuration),
             plan: InProcessCADEngine.gemPlan(for: design, configuration: configuration),
-            metal: configuration.metal1
+            metal: configuration.metal1,
+            metal2: configuration.metal2
         )
     }
 
@@ -105,14 +107,33 @@ final class PricingTests: XCTestCase {
         let (design, configuration, _) = try configured("JWL-1001")
         var twoTone = configuration
         twoTone.metal2 = StandardMetals.catalog.metal(id: "platinum-950")
-        let quote = try pricing.quote(
-            configuration: twoTone,
-            design: design,
-            built: rebuilt(design, twoTone)
-        )
+        let built = rebuilt(design, twoTone)
+        let quote = try pricing.quote(configuration: twoTone, design: design, built: built)
 
         XCTAssertEqual(Set(quote.metalGramsBreakdown.keys), ["gold-14k-white", "platinum-950"])
         XCTAssertTrue(quote.isSelfConsistent)
+        XCTAssertEqual(quote.lines.filter { $0.category == .metal }.count, 2)
+
+        // The quote weighs the ring the model built. Pricing re-deriving the
+        // split would let the price list and the model beside it disagree about
+        // how much platinum is in the ring.
+        let platinum = try XCTUnwrap(built.metalBreakdown.first { $0.metal.id == "platinum-950" })
+        XCTAssertEqual(quote.metalGramsBreakdown["platinum-950"] ?? 0, platinum.grams, accuracy: 1e-9)
+        XCTAssertEqual(
+            quote.metalGramsBreakdown.values.reduce(0, +),
+            built.metalGrams,
+            accuracy: 1e-9
+        )
+
+        // The head is the platinum and the metalwork that follows the shank is
+        // not: the quote and the geometry are reading one rule.
+        let headKinds = PartKind.headPartKinds
+        let headParts = built.parts.filter { headKinds.contains($0.kind) }
+        XCTAssertFalse(headParts.isEmpty)
+        XCTAssertTrue(headParts.allSatisfy { $0.metalID == "platinum-950" })
+        let bodyParts = built.parts.filter { $0.kind.isMetal && !headKinds.contains($0.kind) }
+        XCTAssertFalse(bodyParts.isEmpty)
+        XCTAssertTrue(bodyParts.allSatisfy { $0.metalID == "gold-14k-white" })
     }
 
     func testAMissingMetalRateIsRefusedRatherThanPricedAtZero() throws {

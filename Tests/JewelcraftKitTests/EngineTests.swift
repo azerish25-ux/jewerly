@@ -59,6 +59,13 @@ final class EngineTests: XCTestCase {
         let engine = try await makeEngine()
         let before = try await snapshot(engine)
 
+        // One metal before the pairing, and the whole ring is weighed in it.
+        XCTAssertEqual(before.metalBreakdown.count, 1)
+        let baseline = try XCTUnwrap(before.metalBreakdown.first)
+        XCTAssertEqual(baseline.metal.id, before.metal1ID)
+        let singleMetal = try await engine.build()
+        XCTAssertEqual(singleMetal.metalGrams, baseline.grams, accuracy: 1e-9)
+
         let white = try XCTUnwrap(StandardMetals.catalog.metal(id: "gold-14k-white"))
         let platinum = try XCTUnwrap(StandardMetals.catalog.metal(id: "platinum-950"))
         try await engine.setMetals(metal1: white, metal2: platinum)
@@ -66,7 +73,39 @@ final class EngineTests: XCTestCase {
         let after = try await snapshot(engine)
         XCTAssertEqual(after.metal1ID, "gold-14k-white")
         XCTAssertEqual(after.metal2ID, "platinum-950")
+
+        // Platinum 950 is the denser metal and the head is cast in it, so the
+        // ring gains weight. A pairing that changed nothing would mean the
+        // second metal never reached the geometry at all.
         XCTAssertGreaterThan(after.metalGrams, before.metalGrams)
+
+        // Two metals, weighed apart, and their sum is the ring.
+        XCTAssertEqual(after.metalBreakdown.map(\.metal.id), ["gold-14k-white", "platinum-950"])
+        let body = try XCTUnwrap(after.metalBreakdown.first)
+        let head = try XCTUnwrap(after.metalBreakdown.last)
+        XCTAssertEqual(body.grams + head.grams, after.metalGrams, accuracy: 1e-9)
+        XCTAssertEqual(
+            body.volumeCubicMillimetres + head.volumeCubicMillimetres,
+            after.metalVolumeCubicMillimetres,
+            accuracy: 1e-9
+        )
+        XCTAssertGreaterThan(body.volumeCubicMillimetres, head.volumeCubicMillimetres)
+        XCTAssertEqual(
+            head.grams,
+            head.metal.grams(forCubicMillimetres: head.volumeCubicMillimetres),
+            accuracy: 1e-9
+        )
+
+        // The head assembly is the second metal; the shank and the metalwork
+        // that follows it stay the first.
+        let built = try await engine.build()
+        let headKinds = PartKind.headPartKinds
+        let headParts = built.parts.filter { headKinds.contains($0.kind) }
+        XCTAssertFalse(headParts.isEmpty)
+        XCTAssertTrue(headParts.allSatisfy { $0.metalID == "platinum-950" })
+        let bodyParts = built.parts.filter { $0.kind.isMetal && !headKinds.contains($0.kind) }
+        XCTAssertFalse(bodyParts.isEmpty)
+        XCTAssertTrue(bodyParts.allSatisfy { $0.metalID == "gold-14k-white" })
     }
 
     func testAnUnsolderableMetalPairIsRefused() async throws {

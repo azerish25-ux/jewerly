@@ -40,6 +40,12 @@ public enum PartKind: String, Codable, CaseIterable, Sendable {
     case accentStone
     case haloStone
 
+    /// The kinds a two-tone configuration casts in its second metal: everything
+    /// in the head. The builder assigns every metal part its metal from this one
+    /// set and weighs it in that metal, so the model, the scene graph and the
+    /// quote all describe the same ring.
+    public static let headPartKinds: Set<PartKind> = [.prong, .basket, .bezel, .haloRail]
+
     /// Metal parts contribute to the ring's measured weight; stones do not.
     public var isMetal: Bool {
         switch self {
@@ -73,6 +79,9 @@ public struct PartGroup: Identifiable, Equatable, Sendable {
     public var kind: PartKind
     public var mesh: Mesh
     public var userData: [String: String]
+    /// Which metal this part is cast in. Stones, construction geometry and any
+    /// part built outside the ring builder carry none.
+    public var metalID: String?
     /// Which configured gem slot this part belongs to, when it is a stone or a
     /// stone's setting.
     public var gemSlotIndex: Int?
@@ -85,6 +94,7 @@ public struct PartGroup: Identifiable, Equatable, Sendable {
         kind: PartKind,
         mesh: Mesh,
         userData: [String: String] = [:],
+        metalID: String? = nil,
         gemSlotIndex: Int? = nil,
         isVisibleByDefault: Bool = true
     ) {
@@ -93,6 +103,7 @@ public struct PartGroup: Identifiable, Equatable, Sendable {
         self.kind = kind
         self.mesh = mesh
         self.userData = userData
+        self.metalID = metalID
         self.gemSlotIndex = gemSlotIndex
         self.isVisibleByDefault = isVisibleByDefault
     }
@@ -215,6 +226,30 @@ public struct GemPlan: Equatable, Sendable {
     public static let empty = GemPlan(centre: nil, accents: [], accentPattern: .none)
 }
 
+// MARK: - Weight
+
+/// How much of the ring is made of one metal.
+///
+/// A single-metal ring has one of these; a two-tone ring has two. Each is a
+/// measured volume, not a share of the total: the parts assigned to a metal are
+/// summed and weighed in that metal's own density.
+public struct MetalWeight: Equatable, Sendable {
+    public var metal: Metal
+    public var volumeCubicMillimetres: Double
+    public var grams: Double
+
+    public init(metal: Metal, volumeCubicMillimetres: Double, grams: Double) {
+        self.metal = metal
+        self.volumeCubicMillimetres = volumeCubicMillimetres
+        self.grams = grams
+    }
+
+    /// What the metric rows and the quote line print.
+    public var gramsText: String {
+        String(format: "%.2f g", grams)
+    }
+}
+
 // MARK: - Result
 
 /// The assembled ring.
@@ -226,6 +261,8 @@ public struct BuiltRing: Equatable, Sendable {
     public var metalVolumeCubicMillimetres: Double
     /// Estimated cast weight in grams.
     public var metalGrams: Double
+    /// That weight by metal, in the order the metals were supplied.
+    public var metalBreakdown: [MetalWeight]
     public var bounds: BoundingBox
     public var defects: [MeshDefect]
 
@@ -235,6 +272,7 @@ public struct BuiltRing: Equatable, Sendable {
         gemPlacements: [GemPlacement],
         metalVolumeCubicMillimetres: Double,
         metalGrams: Double,
+        metalBreakdown: [MetalWeight] = [],
         bounds: BoundingBox,
         defects: [MeshDefect]
     ) {
@@ -243,6 +281,7 @@ public struct BuiltRing: Equatable, Sendable {
         self.gemPlacements = gemPlacements
         self.metalVolumeCubicMillimetres = metalVolumeCubicMillimetres
         self.metalGrams = metalGrams
+        self.metalBreakdown = metalBreakdown
         self.bounds = bounds
         self.defects = defects
     }
@@ -311,15 +350,27 @@ public enum RingBuilder {
         parameters: RingParameters,
         plan: GemPlan,
         metal: Metal,
+        metal2: Metal? = nil,
         sizer: GemSizer = GemSizer()
     ) -> BuiltRing {
         var parts: [PartGroup] = []
         var placements: [GemPlacement] = []
 
+        // A two-tone ring is two metals: the head assembly is cast in the second
+        // metal, and everything that follows the shank in the first. The
+        // assignment happens here, once, so that no caller has to remember it.
+        let headMetal = metal2 ?? metal
+
         // A part with no geometry is a defect, not a placeholder: an empty mesh
         // reads as a hole in the model. Everything is filtered through here.
         func add(_ part: PartGroup) {
             guard !part.mesh.isEmpty else { return }
+            var part = part
+            if part.kind.isMetal {
+                let assigned = PartKind.headPartKinds.contains(part.kind) ? headMetal : metal
+                part.metalID = assigned.id
+                part.userData["metal"] = assigned.id
+            }
             parts.append(part)
         }
 
@@ -393,10 +444,23 @@ public enum RingBuilder {
             add(stonePart(for: placement, kind: .accentStone, name: "\(placement.shape.displayName) accent stone \(placement.slotIndex)"))
         }
 
-        let volume = parts
-            .filter { $0.kind.isMetal }
-            .reduce(0.0) { $0 + abs($1.mesh.signedVolume) }
-        let grams = volume * metal.densityGramsPerCubicMillimetre
+        // Each metal's parts are weighed in that metal. One multiplication
+        // cannot weigh a two-tone ring: the head's volume is weighed as the
+        // head's metal and the body's as the body's, and the total is their sum.
+        var metalBreakdown: [MetalWeight] = []
+        for candidate in [metal, metal2].compactMap({ $0 }) {
+            guard !metalBreakdown.contains(where: { $0.metal.id == candidate.id }) else { continue }
+            let metalVolume = parts
+                .filter { $0.kind.isMetal && $0.metalID == candidate.id }
+                .reduce(0.0) { $0 + abs($1.mesh.signedVolume) }
+            metalBreakdown.append(MetalWeight(
+                metal: candidate,
+                volumeCubicMillimetres: metalVolume,
+                grams: candidate.grams(forCubicMillimetres: metalVolume)
+            ))
+        }
+        let volume = metalBreakdown.reduce(0.0) { $0 + $1.volumeCubicMillimetres }
+        let grams = metalBreakdown.reduce(0.0) { $0 + $1.grams }
 
         let bounds = parts.reduce(nil as BoundingBox?) { box, part in
             part.mesh.bounds.union(box)
@@ -410,6 +474,7 @@ public enum RingBuilder {
             gemPlacements: placements,
             metalVolumeCubicMillimetres: volume,
             metalGrams: grams,
+            metalBreakdown: metalBreakdown,
             bounds: bounds,
             defects: defects
         )

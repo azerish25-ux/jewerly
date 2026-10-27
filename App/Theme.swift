@@ -58,12 +58,15 @@ struct MetricRow: View {
     let label: String
     let value: String
     var emphasised = false
+    /// A breakdown line under the row it belongs to.
+    var indented = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
                 .font(.system(size: 12))
                 .foregroundStyle(StudioTheme.muted)
+                .padding(.leading, indented ? 10 : 0)
             Spacer(minLength: 12)
             Text(value)
                 .font(.system(size: 13, weight: emphasised ? .semibold : .regular, design: .monospaced))

@@ -468,6 +468,7 @@ public final class InProcessCADEngine: CADEngineSession {
             parameters: parameters,
             plan: plan,
             metal: configuration.metal1,
+            metal2: configuration.metal2,
             sizer: sizer
         )
 
@@ -680,6 +681,7 @@ enum ConfigurationSnapshotFactory {
             partCount: built.parts.count,
             triangleCount: built.triangleCount,
             metalGrams: built.metalGrams,
+            metalBreakdown: built.metalBreakdown,
             metalVolumeCubicMillimetres: built.metalVolumeCubicMillimetres,
             issues: configuration.validationIssues
         )
