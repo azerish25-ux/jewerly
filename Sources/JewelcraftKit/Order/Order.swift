@@ -511,17 +511,22 @@ public final class OrderService {
     private let references: OrderReferenceGenerator
     private let clock: () -> Date
 
+    /// `references` is optional because a generator carries its own clock. When
+    /// a caller injects a clock and no generator, the generator is built from
+    /// that clock, so the date in the reference and the order's own timestamps
+    /// cannot come from two different days. Supplying a generator still wins:
+    /// that is how a studio swaps in a different numbering scheme.
     public init(
         repository: OrderRepository,
         catalog: CatalogService,
         pricing: PricingEngine,
-        references: OrderReferenceGenerator = OrderReferenceGenerator(),
+        references: OrderReferenceGenerator? = nil,
         clock: @escaping () -> Date = { Date() }
     ) {
         self.repository = repository
         self.catalog = catalog
         self.pricing = pricing
-        self.references = references
+        self.references = references ?? OrderReferenceGenerator(clock: clock)
         self.clock = clock
     }
 
